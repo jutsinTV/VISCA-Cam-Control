@@ -55,13 +55,13 @@ class SingleVideoApp:
 
         # 2. Setup Tkinter UI Layout Elements
         self.main_frame = tk.Frame(self.window, padx=10, pady=10)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.main_frame.grid(row=0, column=0, sticky="nsew", rowspan=10, columnspan=10)
         
         # Label layout acting as the video view screen
         self.video_label = tk.Label(
             self.main_frame, bd=2, relief="groove", width=640, height=480
         )
-        self.video_label.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=5)
+        self.video_label.grid(row=0, column=0, sticky="nsew", rowspan=10, columnspan=10, pady=5)
         
         # Clean control button beneath the frame layout
         self.quit_button = tk.Button(
@@ -72,8 +72,17 @@ class SingleVideoApp:
             bg="#d9534f",
             fg="white"
         )
-        self.quit_button.pack(side=tk.BOTTOM, pady=5)
-        
+        self.quit_button.grid(row=12, column=9, pady=5)
+
+        self.current_camera = tk.StringVar(value=f"Camera ID: {hex(self.camID)}")
+        self.current_camera_label = tk.Label(
+            self.main_frame,
+            textvariable=self.current_camera,
+            font=("Arial", 12),
+            pady=5
+        )
+        self.current_camera_label.grid(row=11, column=9, pady=5)
+
         # Handle the standard window close 'X' frame action safely
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         
