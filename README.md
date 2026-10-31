@@ -1,2 +1,2 @@
-# VISCA-Cam-Control
+# VISCA-Cam-Control-RS232
 ## WIP
