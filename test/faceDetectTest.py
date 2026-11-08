@@ -12,6 +12,9 @@ CAMERA_INDEX = 1
 FACE_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "blaze_face_short_range.tflite"
 )
+OBJECT_MODEL_PATH = os.path.join(
+    os.path.dirname(__file__), "efficientdet_lite0.tflite"
+)
 TRACKING_PAN_SPEED = 0x14 # Max is 0x18
 TRACKING_TILT_SPEED = 0x14 # Max is 0x14
 TRACKING_ZOOM_SPEED = 0x07 # Max is 0x07
@@ -33,9 +36,11 @@ serial_lock = Lock()
 serial_warning_shown = False
 ser = None
 tracking_enabled = False
+object_detection_enabled = False
 tracking_zoom_enabled = False
-tracking_overlay_enabled = True
+detection_overlay_enabled = True
 face_detector = None
+object_detector = None
 tracking_command = (0x03, 0x03)
 tracking_zoom_direction = 0x00
 
@@ -55,10 +60,12 @@ npplu = 107
 npent = 13
 npdec = 110
 overlay_toggle_vk = 86
+object_detection_toggle_vk = 79
 
 camera_control_vks = {
     np1, np2, np3, np4, np5, np6, np7, np8, np9,
     npplu, npmin, npdiv, npmul, overlay_toggle_vk,
+    object_detection_toggle_vk,
 }
 pressed_camera_controls = set()
 
@@ -192,6 +199,18 @@ try:
             min_detection_confidence=0.5,
         )
         return mp.tasks.vision.FaceDetector.create_from_options(options)
+
+    def create_object_detector():
+        if not os.path.isfile(OBJECT_MODEL_PATH):
+            raise FileNotFoundError(
+                f"Object detection model not found: {OBJECT_MODEL_PATH}."
+            )
+
+        options = mp.tasks.vision.ObjectDetectorOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=OBJECT_MODEL_PATH),
+            score_threshold=0.3,
+        )
+        return mp.tasks.vision.ObjectDetector.create_from_options(options)
 
     def stop_face_tracking():
         global tracking_command, tracking_zoom_direction
@@ -332,7 +351,8 @@ try:
 # KEYBINDINGS
 # =========================================================================
     def on_press(key):
-        global tracking_enabled, tracking_zoom_enabled, tracking_overlay_enabled
+        global tracking_enabled, object_detection_enabled
+        global tracking_zoom_enabled, detection_overlay_enabled
 
         if key == keyboard.Key.esc:
             stop_event.set()
@@ -347,15 +367,26 @@ try:
         pressed_char = getattr(key, 'char', None)
         if pressed_char in {'t', 'T'}:
             tracking_enabled = not tracking_enabled
+            if tracking_enabled:
+                object_detection_enabled = False
             print(f"Face tracking {'enabled' if tracking_enabled else 'disabled'}.")
+            return
+        if pressed_char in {'o', 'O'}:
+            object_detection_enabled = not object_detection_enabled
+            if object_detection_enabled:
+                tracking_enabled = False
+            print(
+                f"Object detection "
+                f"{'enabled' if object_detection_enabled else 'disabled'}."
+            )
             return
         if pressed_char in {'z', 'Z'}:
             tracking_zoom_enabled = not tracking_zoom_enabled
             print(f"Tracking zoom {'enabled' if tracking_zoom_enabled else 'disabled'}.")
             return
         if pressed_char in {'v', 'V'}:
-            tracking_overlay_enabled = not tracking_overlay_enabled
-            print(f"Tracking overlay {'shown' if tracking_overlay_enabled else 'hidden'}.")
+            detection_overlay_enabled = not detection_overlay_enabled
+            print(f"Detection overlay {'shown' if detection_overlay_enabled else 'hidden'}.")
             return
 
         if key in {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}:
@@ -496,7 +527,7 @@ try:
     cv2.resizeWindow('Video', 960, 720)
 
     tracking_was_enabled = False
-    tracking_error = None
+    detection_error = None
     while not stop_event.is_set():
         ret, frame = cap.read()
         if not ret:
@@ -504,11 +535,12 @@ try:
             break
 
         face_box = None
+        object_detections = None
         if tracking_enabled:
             try:
                 if face_detector is None:
                     face_detector = create_face_detector()
-                    tracking_error = None
+                    detection_error = None
                 if not tracking_was_enabled:
                     move_camera(
                         pan_dir=0x03,
@@ -522,33 +554,72 @@ try:
                 face_box = track_face(frame)
                 tracking_was_enabled = True
             except (FileNotFoundError, OSError, RuntimeError, ValueError) as e:
-                tracking_error = str(e)
-                print(f"Face tracking error: {tracking_error}")
+                detection_error = str(e)
+                print(f"Face tracking error: {detection_error}")
                 tracking_enabled = False
                 stop_face_tracking()
                 tracking_was_enabled = False
         elif tracking_was_enabled:
             stop_face_tracking()
             tracking_was_enabled = False
-        if tracking_overlay_enabled:
+        if object_detection_enabled:
+            try:
+                if object_detector is None:
+                    object_detector = create_object_detector()
+                    detection_error = None
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                object_detections = object_detector.detect(image).detections
+            except (FileNotFoundError, OSError, RuntimeError, ValueError) as e:
+                detection_error = str(e)
+                print(f"Object detection error: {detection_error}")
+                object_detection_enabled = False
+        if detection_overlay_enabled:
             if face_box is not None:
                 left, top, right, bottom = face_box
                 cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-            status = "ON" if tracking_enabled else "OFF"
+            if object_detections is not None:
+                for detection in object_detections:
+                    box = detection.bounding_box
+                    left = box.origin_x
+                    top = box.origin_y
+                    right = left + box.width
+                    bottom = top + box.height
+                    cv2.rectangle(
+                        frame, (left, top), (right, bottom), (255, 180, 0), 2
+                    )
+
+                    category = detection.categories[0] if detection.categories else None
+                    if category is not None:
+                        label = f"{category.category_name} {category.score:.0%}"
+                        cv2.putText(
+                            frame,
+                            label,
+                            (left, max(15, top - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 180, 0),
+                            2,
+                        )
+            tracking_status = "ON" if tracking_enabled else "OFF"
+            object_status = "ON" if object_detection_enabled else "OFF"
             zoom_status = "ON" if tracking_zoom_enabled else "OFF"
             cv2.putText(
                 frame,
-                f"Face tracking: {status} | Auto zoom: {zoom_status} (T/Z)",
+                f"Face tracking: {tracking_status} (T) | "
+                f"Object detection: {object_status} (O) | "
+                f"Auto zoom: {zoom_status} (Z)",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
-                (0, 255, 0) if tracking_enabled else (255, 255, 255),
+                (0, 255, 0) if tracking_enabled or object_detection_enabled
+                else (255, 255, 255),
                 2,
             )
-        if tracking_error:
+        if detection_error:
             cv2.putText(
                 frame,
-                tracking_error[:100],
+                detection_error[:100],
                 (10, 58),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.45,
@@ -587,5 +658,7 @@ finally:
         close_port()
     if face_detector is not None:
         face_detector.close()
+    if object_detector is not None:
+        object_detector.close()
     cap.release()
     cv2.destroyAllWindows()
