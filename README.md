@@ -19,6 +19,8 @@ https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lit
 - Press **O** to toggle object detection.
 - Press **Z** to toggle automatic zoom while face tracking.
 - Press **V** to show or hide detection boxes and status.
+- Press **A** to switch the video preview between camera indexes 0 and 1; it
+  also switches the VISCA camera address.
 - Press **Q** in the video window or **Esc** to exit.
 
 Face tracking and object detection are mutually exclusive. Object detection

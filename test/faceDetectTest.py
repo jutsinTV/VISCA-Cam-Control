@@ -8,7 +8,7 @@ from threading import Event, Lock
 
 # Windows COM Port (Check Device Manager for your specific port)
 COM_PORT = 'COM3' 
-CAMERA_INDEX = 1
+CAMERA_INDEX = 1  # Adjust if you have multiple cameras; 0 is usually the default webcam
 FACE_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "blaze_face_short_range.tflite"
 )
@@ -33,8 +33,11 @@ camID = 0x81
 current_modifiers = set()
 stop_event = Event()
 serial_lock = Lock()
+camera_lock = Lock()
 serial_warning_shown = False
 ser = None
+camera_index = CAMERA_INDEX
+camera_switch_requested = Event()
 tracking_enabled = False
 object_detection_enabled = False
 tracking_zoom_enabled = False
@@ -61,11 +64,12 @@ npent = 13
 npdec = 110
 overlay_toggle_vk = 86
 object_detection_toggle_vk = 79
+camera_switch_vk = 65
 
 camera_control_vks = {
     np1, np2, np3, np4, np5, np6, np7, np8, np9,
     npplu, npmin, npdiv, npmul, overlay_toggle_vk,
-    object_detection_toggle_vk,
+    object_detection_toggle_vk, camera_switch_vk,
 }
 pressed_camera_controls = set()
 
@@ -456,6 +460,8 @@ try:
             pass
 
     def on_release(key):
+        global camID, camera_index
+
         virtual_key = getattr(key, 'vk', None)
         pressed_camera_controls.discard(virtual_key)
 
@@ -506,14 +512,17 @@ try:
             elif hasattr(key, 'vk') and key.vk == npmul:
                 focus_stop()
 
-            elif hasattr(key, 'char') and key.char == 'a':
-                global camID
+            elif getattr(key, 'char', None) in {'a', 'A'}:
                 if camID == 0x81:
                     camID = 0x82
                     print("Switched to camera 2")
                 elif camID == 0x82:
                     camID = 0x81
                     print("Switched to camera 1")
+                with camera_lock:
+                    camera_index = 1 - camera_index
+                    camera_switch_requested.set()
+                print(f"Switching video preview to camera index {camera_index}.")
                 
         except AttributeError:
             # Handles special non-character keys like Shift, Ctrl, etc.
@@ -523,15 +532,43 @@ try:
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
 
-    cv2.namedWindow('Video', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Video', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
     cv2.resizeWindow('Video', 960, 720)
 
+    active_camera_index = CAMERA_INDEX
     tracking_was_enabled = False
     detection_error = None
     while not stop_event.is_set():
+        if camera_switch_requested.is_set():
+            with camera_lock:
+                requested_camera_index = camera_index
+                camera_switch_requested.clear()
+            if requested_camera_index != active_camera_index:
+                new_cap = cv2.VideoCapture(requested_camera_index, cv2.CAP_DSHOW)
+                if not new_cap.isOpened():
+                    new_cap.release()
+                    new_cap = cv2.VideoCapture(requested_camera_index)
+                if new_cap.isOpened():
+                    cap.release()
+                    cap = new_cap
+                    active_camera_index = requested_camera_index
+                    print(f"Video preview switched to camera index {active_camera_index}.")
+                else:
+                    new_cap.release()
+                    print(
+                        f"Could not open camera index {requested_camera_index}; "
+                        f"keeping camera index {active_camera_index}."
+                    )
+                    with camera_lock:
+                        if camera_index == requested_camera_index:
+                            camera_index = active_camera_index
+
         ret, frame = cap.read()
         if not ret:
-            print(f"Could not read a frame from camera index {CAMERA_INDEX}; stopping preview.")
+            print(
+                f"Could not read a frame from camera index {active_camera_index}; "
+                "stopping preview."
+            )
             break
 
         face_box = None
@@ -608,7 +645,7 @@ try:
                 frame,
                 f"Face tracking: {tracking_status} (T) | "
                 f"Object detection: {object_status} (O) | "
-                f"Auto zoom: {zoom_status} (Z)",
+                f"Auto zoom: {zoom_status} (Z) | Camera: {active_camera_index} (A)",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
