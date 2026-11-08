@@ -16,8 +16,8 @@ OBJECT_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "efficientdet_lite0.tflite"
 )
 TRACKING_PAN_SPEED = 0x14 # Max is 0x18
-TRACKING_TILT_SPEED = 0x14 # Max is 0x14
-TRACKING_ZOOM_SPEED = 0x07 # Max is 0x07
+TRACKING_TILT_SPEED = 0x12 # Max is 0x14
+TRACKING_ZOOM_SPEED = 0x05 # Max is 0x07
 TRACKING_DEADBAND_X = 0.13
 TRACKING_DEADBAND_Y = 0.13
 TRACKING_ZOOM_IN_THRESHOLD = 0.20
