@@ -28,7 +28,8 @@ if not cap.isOpened():
     cap.release()
     cap = cv2.VideoCapture(CAMERA_INDEX)
 
-camID = 0x81
+# Camera indexes 0 and 1 map to VISCA addresses 0x81 and 0x82.
+camID = 0x81 + CAMERA_INDEX
 
 current_modifiers = set()
 stop_event = Event()
@@ -124,8 +125,10 @@ try:
 
         try:
             with serial_lock:
+                command_bytes = bytes(command_bytes)
+                command_bytes = bytes([camID]) + command_bytes[1:]
                 ser.reset_input_buffer()
-                ser.write(bytes(command_bytes))
+                ser.write(command_bytes)
                 ser.flush()
         except serial.SerialException as e:
             print(f"VISCA connection lost on {COM_PORT}: {e}. Video preview will continue.")
@@ -460,7 +463,7 @@ try:
             pass
 
     def on_release(key):
-        global camID, camera_index
+        global camera_index
 
         virtual_key = getattr(key, 'vk', None)
         pressed_camera_controls.discard(virtual_key)
@@ -513,16 +516,14 @@ try:
                 focus_stop()
 
             elif getattr(key, 'char', None) in {'a', 'A'}:
-                if camID == 0x81:
-                    camID = 0x82
-                    print("Switched to camera 2")
-                elif camID == 0x82:
-                    camID = 0x81
-                    print("Switched to camera 1")
                 with camera_lock:
                     camera_index = 1 - camera_index
                     camera_switch_requested.set()
-                print(f"Switching video preview to camera index {camera_index}.")
+                    requested_camera_index = camera_index
+                print(
+                    "Requesting video preview switch to camera index "
+                    f"{requested_camera_index}."
+                )
                 
         except AttributeError:
             # Handles special non-character keys like Shift, Ctrl, etc.
@@ -552,6 +553,8 @@ try:
                     cap.release()
                     cap = new_cap
                     active_camera_index = requested_camera_index
+                    with serial_lock:
+                        camID = 0x81 + active_camera_index
                     print(f"Video preview switched to camera index {active_camera_index}.")
                 else:
                     new_cap.release()
