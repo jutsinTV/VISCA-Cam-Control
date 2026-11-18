@@ -1,3 +1,4 @@
+import configparser
 import cv2
 import mediapipe as mp
 import os
@@ -6,18 +7,39 @@ import time
 from pynput import keyboard
 from threading import Event, Lock
 
-# Windows COM Port (Check Device Manager for your specific port)
-COM_PORT = 'COM3' 
-CAMERA_INDEX = 1  # Adjust if you have multiple cameras; 0 is usually the default webcam
+# Config file handling for easy adjustment of COM port, camera index, and tracking speeds
+config = configparser.ConfigParser(allow_no_value=True)
+config.read('config.ini')
+
+COM_PORT = config.get('VISCA', 'COM_PORT', fallback='COM3')  # Adjust to match your RS-232 adapter's COM port. Use Device Manager to find the correct port.
+CAMERA_INDEX = config.getint('VISCA', 'CAMERA_INDEX', fallback=0)  #  0 is usually the default webcam; adjust if you have multiple cameras
+
+def generate_config_file():
+    if not os.path.exists('config.ini'):
+        config.add_section('VISCA')
+        config.set('VISCA', '\n; COM_PORT is the serial port for the RS-232 adapter connected to the BRC-300. Adjust as needed.')
+        config.set('VISCA', 'COM_PORT', 'COM3')
+        config.set('VISCA', '\n; CAMERA_INDEX is the index of the camera to use for video capture. 0 is usually the default webcam; adjust if you have multiple cameras or if the camera controlled does not match the camera being shown.')
+        config.set('VISCA', 'CAMERA_INDEX', '0')
+        config.set('VISCA', '\n; CAMERA_PAN_SPEED max is 0x18, CAMERA_TILT_SPEED max is 0x14, CAMERA_ZOOM_SPEED max is 0x07. Adjust as needed.')
+        config.set('VISCA', 'CAMERA_PAN_SPEED', '0x14')
+        config.set('VISCA', 'CAMERA_TILT_SPEED', '0x12')
+        config.set('VISCA', 'CAMERA_ZOOM_SPEED', '0x05')
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+        print("Generated default config.ini file. Please review and adjust settings as needed.")
+
+generate_config_file()
+
 FACE_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "blaze_face_short_range.tflite"
 )
 OBJECT_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "efficientdet_lite0.tflite"
 )
-TRACKING_PAN_SPEED = 0x14 # Max is 0x18
-TRACKING_TILT_SPEED = 0x12 # Max is 0x14
-TRACKING_ZOOM_SPEED = 0x05 # Max is 0x07
+TRACKING_PAN_SPEED = int(config.get('VISCA', 'CAMERA_PAN_SPEED', fallback='0x14'), 0)  # Max is 0x18
+TRACKING_TILT_SPEED = int(config.get('VISCA', 'CAMERA_TILT_SPEED', fallback='0x12'), 0)  # Max is 0x14
+TRACKING_ZOOM_SPEED = int(config.get('VISCA', 'CAMERA_ZOOM_SPEED', fallback='0x05'), 0)  # Max is 0x07
 TRACKING_DEADBAND_X = 0.13
 TRACKING_DEADBAND_Y = 0.13
 TRACKING_ZOOM_IN_THRESHOLD = 0.20
@@ -48,6 +70,7 @@ object_detector = None
 tracking_command = (0x03, 0x03)
 tracking_zoom_direction = 0x00
 
+# keyboard virtual key codes for the numeric keypad and other controls
 np1 = 97
 np2 = 98
 np3 = 99

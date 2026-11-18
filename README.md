@@ -25,15 +25,19 @@ curl -O https://storage.googleapis.com/mediapipe-models/object_detector/efficien
 ```
 
 
-Run `test/faceDetectTest.py` with the camera and VISCA serial connection configured.
-Set `COM_PORT` and `CAMERA_INDEX` near the top of the script to match your setup.
-The preview still opens if the VISCA serial port is unavailable, but pan/tilt
-commands require a working serial connection.
+
+Run `test/faceDetectTest.py` 
 
 ```bash
 python3 faceDetectTest.py
 ```
 
+It will probably crash or fail to start on first run but will generate a ini file called `config.ini`. 
+
+Open this file and change the `com_port` and `camera_index` to match your setup. The `com_port` can be found in your device manager.
+
+The preview still opens if the VISCA serial port is unavailable, but pan/tilt
+commands require a working serial connection.
 ## Keybinds
 - Press **'T'** to toggle face tracking.
 - Press **'O'** to toggle object detection.
