@@ -25,6 +25,12 @@ def generate_config_file():
         config.set('VISCA', 'CAMERA_PAN_SPEED', '0x14')
         config.set('VISCA', 'CAMERA_TILT_SPEED', '0x12')
         config.set('VISCA', 'CAMERA_ZOOM_SPEED', '0x05')
+        config.set('VISCA', '\n; TRACKING_DEADBAND_X and TRACKING_DEADBAND_Y are the values used to indicate how far off center the face will need to be in order for the camera to move it back to the center of the frame. Higher values will make the camera less sensitive to small movements, while lower values will make it more sensitive.')
+        config.set('VISCA', 'TRACKING_DEADBAND_X', '0.13')
+        config.set('VISCA', 'TRACKING_DEADBAND_Y', '0.13')
+        config.set('VISCA', '\n; TRACKING_ZOOM_IN_THRESHOLD and TRACKING_ZOOM_OUT_THRESHOLD are the values used to indicate how small or large the face will need to be in order for the camera to zoom in or out. Higher values will make the camera zoom out sooner, while lower values will make it zoom in sooner. The zoom in threshold should be smaller than the zoom out threshold.')
+        config.set('VISCA', 'TRACKING_ZOOM_IN_THRESHOLD', '0.20')
+        config.set('VISCA', 'TRACKING_ZOOM_OUT_THRESHOLD', '0.34')
         with open('config.ini', 'w') as configfile:
             config.write(configfile)
         print("Generated default config.ini file. Please review and adjust settings as needed.")
@@ -40,11 +46,12 @@ OBJECT_MODEL_PATH = os.path.join(
 TRACKING_PAN_SPEED = int(config.get('VISCA', 'CAMERA_PAN_SPEED', fallback='0x14'), 0)  # Max is 0x18
 TRACKING_TILT_SPEED = int(config.get('VISCA', 'CAMERA_TILT_SPEED', fallback='0x12'), 0)  # Max is 0x14
 TRACKING_ZOOM_SPEED = int(config.get('VISCA', 'CAMERA_ZOOM_SPEED', fallback='0x05'), 0)  # Max is 0x07
-TRACKING_DEADBAND_X = 0.13
-TRACKING_DEADBAND_Y = 0.13
-TRACKING_ZOOM_IN_THRESHOLD = 0.20
-TRACKING_ZOOM_OUT_THRESHOLD = 0.34
+TRACKING_DEADBAND_X = float(config.get('VISCA', 'TRACKING_DEADBAND_X', fallback='0.13'))
+TRACKING_DEADBAND_Y = float(config.get('VISCA', 'TRACKING_DEADBAND_Y', fallback='0.13'))
+TRACKING_ZOOM_IN_THRESHOLD = float(config.get('VISCA', 'TRACKING_ZOOM_IN_THRESHOLD', fallback='0.20'))
+TRACKING_ZOOM_OUT_THRESHOLD = float(config.get('VISCA', 'TRACKING_ZOOM_OUT_THRESHOLD', fallback='0.34'))
 
+# Load the camera using OpenCV's VideoCapture. Use CAP_DSHOW to avoid delays on Windows.
 cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
 if not cap.isOpened():
     cap.release()
